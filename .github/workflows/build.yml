@@ -17,7 +17,9 @@ jobs:
         run: npm install
 
       - name: Copy web assets
-        run: npx cap copy ios
+        run: |
+          chmod +x node_modules/.bin/cap
+          npx cap copy ios
 
       - name: Pod install
         working-directory: ios/App
