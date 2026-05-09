@@ -3,6 +3,8 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -50,11 +52,18 @@ color-scheme: light only;
 html, body {
 width: 100%; height: 100%;
 overflow: hidden;
+overscroll-behavior: none;
+-webkit-overflow-scrolling: auto;
+position: fixed;
 font-family: ‘DM Sans’, -apple-system, BlinkMacSystemFont, ‘Segoe UI’, sans-serif;
 color: #26201a;
 -webkit-font-smoothing: antialiased;
+-moz-osx-font-smoothing: grayscale;
+/* Prevent iOS Safari/WKWebView bounce scroll on body */
+-webkit-user-select: none;
+user-select: none;
+background-color: #f7f4f0;
 }
-
 /* Dot grid */
 /* dot grid moved to body background-image */
 
@@ -69,9 +78,9 @@ padding: 5px 8px;
 background: rgba(250,247,243,0.75);
 border: 1px solid rgba(210,185,165,0.55);
 border-radius: 999px;
-backdrop-filter: blur(28px) saturate(1.6) brightness(1.04);
--webkit-backdrop-filter: blur(28px) saturate(1.6) brightness(1.04);
-box-shadow: 0 4px 24px rgba(80,45,15,0.10), 0 1px 4px rgba(80,45,15,0.06), inset 0 1px 0 rgba(255,255,255,0.9);
+backdrop-filter: blur(16px) saturate(1.6) brightness(1.04);
+-webkit-backdrop-filter: blur(16px) saturate(1.6) brightness(1.04);
+box-shadow: 0 4px 20px rgba(80,45,15,0.12), inset 0 1px 0 rgba(255,255,255,0.8);
 white-space: nowrap;
 max-width: calc(100vw - 24px);
 }
@@ -100,12 +109,12 @@ padding: 0 4px; min-width: 36px; text-align: center;
 }
 
 /* ── CANVAS ── */
+
 #wrap {
 position: fixed; inset: 0; z-index: 1;
 overflow: hidden;
 touch-action: none;
 background: transparent;
-isolation: isolate;
 }
 
 #canvas {
@@ -113,6 +122,11 @@ position: absolute;
 width: 2400px; height: 2400px;
 transform-origin: 0 0;
 will-change: transform;
+contain: layout style;
+/* WKWebView: не используем translateZ/perspective на canvas —
+это создаёт 3D compositing context и ломает backdrop-filter потомков */
+-webkit-transform-style: flat;
+transform-style: flat;
 }
 
 /* ── SVG CONNECTIONS ── */
@@ -120,27 +134,32 @@ will-change: transform;
 position: absolute; inset: 0;
 width: 100%; height: 100%;
 pointer-events: none; overflow: visible;
+contain: layout;
 }
 .c-line {
 fill: none;
 stroke: #e07a3a;
-stroke-opacity: 0.6;
+stroke-opacity: 0.65;
 stroke-width: 2;
 stroke-linecap: round;
 pointer-events: stroke;
 cursor: pointer;
-transition: stroke-width 0.2s;
+transition: stroke-width 0.2s, opacity 0.2s;
+/* shimmer via CSS opacity (compositor thread) instead of stroke-opacity (paint thread) */
 animation: shimmerGlow 3s ease-in-out infinite;
 }
 .c-line:hover, .c-line.hi {
 stroke-width: 2.8;
 }
 @keyframes shimmerGlow {
-0%   { stroke-opacity: 0.45; stroke-width: 1.8; filter: none; }
-45%  { stroke-opacity: 0.55; stroke-width: 2;   filter: none; }
-50%  { stroke-opacity: 1;    stroke-width: 2.8; filter: drop-shadow(0 0 4px rgba(255,180,80,0.9)); }
-55%  { stroke-opacity: 0.55; stroke-width: 2;   filter: none; }
-100% { stroke-opacity: 0.45; stroke-width: 1.8; filter: none; }
+0%   { opacity: 0.55; }
+50%  { opacity: 1; }
+100% { opacity: 0.55; }
+}
+/* WKWebView low-end: no line animation */
+html.is-wkwebview body.low-end-device .c-line {
+animation: none !important;
+opacity: 0.7;
 }
 
 #draw-line {
@@ -153,15 +172,15 @@ opacity: 0.7; display: none;
 /* ── NOTE ── */
 .note {
 position: absolute;
-contain: layout style;
+contain: layout style paint;
 width: 220px;
 min-width: 180px;
-background: rgba(250,247,243,0.78);
+background: rgba(250,247,243,0.18);
 border: 1px solid rgba(210,185,165,0.55);
 border-radius: 16px;
-box-shadow: 0 4px 24px rgba(80,45,15,0.10), 0 1px 4px rgba(80,45,15,0.06), inset 0 1px 0 rgba(255,255,255,0.9);
-backdrop-filter: blur(18px) saturate(1.5);
--webkit-backdrop-filter: blur(18px) saturate(1.5);
+box-shadow: 0 4px 20px rgba(80,45,15,0.12), inset 0 1px 0 rgba(255,255,255,0.8);
+backdrop-filter: blur(12px) saturate(1.4);
+-webkit-backdrop-filter: blur(12px) saturate(1.4);
 transition: box-shadow 0.2s, transform 0.12s;
 user-select: none;
 touch-action: none;
@@ -169,26 +188,70 @@ display: flex;
 flex-direction: column;
 overflow: hidden;
 z-index: 20;
+will-change: auto;
 }
 
 /* During pinch zoom — disable GPU-heavy effects to prevent WebKit crash */
-body.is-zooming .note {
+body.is-zooming .note, body.is-panning .note {
 backdrop-filter: none !important;
 -webkit-backdrop-filter: none !important;
-will-change: auto !important;
+transition: none !important;
 }
-body.is-zooming #toolbar {
+body.is-zooming #toolbar, body.is-panning #toolbar {
 backdrop-filter: none !important;
 -webkit-backdrop-filter: none !important;
 }
 body.is-zooming #boards-panel,
-body.is-zooming #settings-box {
+body.is-zooming #settings-box,
+body.is-panning #boards-panel,
+body.is-panning #settings-box {
 backdrop-filter: none !important;
 -webkit-backdrop-filter: none !important;
 }
-body.is-zooming .c-line {
+body.is-zooming .c-line, body.is-panning .c-line {
 animation: none !important;
 }
+body.is-zooming #svg-layer, body.is-panning #svg-layer {
+pointer-events: none !important;
+}
+/* Disable hover checks on all canvas nodes during pan = fewer hit-test cycles */
+body.is-panning #canvas > * {
+pointer-events: none !important;
+}
+/* Disable all hover/pointer checks on canvas children during pan — big win */
+body.is-panning #canvas .note,
+body.is-panning #canvas .canvas-image,
+body.is-panning #canvas .text-node,
+body.is-panning #canvas .comment-bubble {
+pointer-events: none !important;
+}
+
+/* ── LOW-END DEVICE ONLY: disable backdrop-filter если явно определён ── */
+/* Срабатывает только если ≥25 нодов (auto) или маленький экран + 2 ядра  */
+body.low-end-device .note {
+backdrop-filter: none !important;
+-webkit-backdrop-filter: none !important;
+background: rgba(250,247,243,0.95) !important;
+}
+body.low-end-device .comment-bubble {
+backdrop-filter: none !important;
+-webkit-backdrop-filter: none !important;
+}
+
+/* ── LOD: LOW-DETAIL MODE AT LOW ZOOM ──────────────────────────────────── */
+/* Только убираем дорогой backdrop-filter — размеры и контент НЕ трогаем  */
+/* (изменение height ломало внешний вид нодов при отдалении)               */
+body.lod-low .note {
+box-shadow: 0 2px 8px rgba(80,45,15,0.10) !important;
+}
+body.lod-low .text-node {
+opacity: 0.85;
+}
+/* Notes scrolled off-screen */
+.note.offscreen {
+will-change: auto !important;
+}
+
 .note.drag {
 box-shadow: 0 12px 40px rgba(80,45,15,0.14), 0 2px 8px rgba(80,45,15,0.07);
 transform: scale(1.03) rotate(-0.8deg);
@@ -202,6 +265,7 @@ overflow: hidden;
 min-height: 20px;
 display: flex;
 flex-direction: column;
+contain: layout style;
 }
 .note.sel { box-shadow: 0 0 0 2.5px #eda06a, 0 12px 40px rgba(80,45,15,0.14), 0 2px 8px rgba(80,45,15,0.07); }
 
@@ -308,12 +372,13 @@ position: absolute;
 touch-action: none;
 user-select: none;
 cursor: grab;
-z-index: 5;
+z-index: 2;
 border-radius: 12px;
 box-shadow: 0 4px 20px rgba(80,45,15,0.12);
 overflow: visible;
 display: block;
 transform-origin: center center;
+contain: layout style;
 }
 .canvas-image:active { cursor: grabbing; }
 .canvas-image img {
@@ -355,6 +420,7 @@ user-select: none;
 z-index: 10;
 display: flex;
 flex-direction: column;
+contain: layout style;
 }
 /* tail handled by data-tail selectors below */
 .comment-bubble.drag {
@@ -743,45 +809,36 @@ display: none;
 position: absolute;
 bottom: -8px; right: -8px;
 width: 28px; height: 28px;
-background: rgba(250,247,243,0.97);
-border: 1.5px solid rgba(224,122,58,0.6);
+background: #e07a3a;
+border: none;
 border-radius: 8px;
 z-index: 40;
 cursor: se-resize;
 touch-action: none;
 align-items: center;
 justify-content: center;
-box-shadow: 0 2px 8px rgba(80,40,10,0.18);
-transition: background 0.13s, border-color 0.13s, transform 0.12s;
+box-shadow: 0 2px 10px rgba(224,122,58,0.45);
+transition: background 0.13s, transform 0.12s;
 }
 /* Show in connect mode — positioned outside note bounds */
 .note.connect-mode .note-resize {
 display: flex;
 }
 /* Let the handle poke outside the card */
+/* contain:paint clips children even with overflow:visible — must remove it */
 .note.connect-mode {
 overflow: visible;
+contain: layout style;
 }
-.note-resize::after {
-content: ‘’;
-display: block;
-width: 11px; height: 11px;
-border-right: 2.5px solid #e07a3a;
-border-bottom: 2.5px solid #e07a3a;
-border-radius: 0 0 3px 0;
-}
+.note-resize::after { content: none; }
 .note-resize:hover {
-background: #fce8d8;
-border-color: #e07a3a;
+background: #c85e1a;
 transform: scale(1.13);
 }
 .note-resize:active {
-background: #f5d0b0;
-border-color: #c85e1a;
+background: #a84d14;
 transform: scale(0.93);
 }
-.note-resize:hover::after { border-color: #c85e1a; }
-.note-resize:active::after { border-color: #c85e1a; transform: scale(0.95); }
 /* Size tooltip shown during resize */
 .note-size-tip {
 position: absolute;
@@ -886,21 +943,13 @@ display: none !important;
 #settings-panel {
 display: none;
 position: fixed;
-inset: 0;
+bottom: calc(34px + 72px);
+left: 12px;
 z-index: 10000;
-align-items: flex-end;
-justify-content: flex-start;
-padding-bottom: calc(34px + 72px);
-padding-left: 12px;
-isolation: isolate;
-background: transparent;
 }
-/* Block all canvas elements from showing over settings panel */
-#settings-panel.open ~ * .note-menu-btn,
-#settings-panel.open ~ * .note-resize {
-visibility: hidden !important;
+#settings-panel.open {
+display: block;
 }
-#settings-panel.open { display: flex; }
 
 #settings-box {
 background: rgba(250,247,243,0.98);
@@ -912,7 +961,6 @@ box-shadow: 0 16px 48px rgba(80,40,10,0.18), inset 0 1px 0 rgba(255,255,255,0.9)
 padding: 16px;
 width: 220px;
 animation: panelPop 0.3s cubic-bezier(0.34,1.4,0.64,1) both;
-isolation: isolate;
 overflow: hidden;
 position: relative;
 display: flex;
@@ -1120,7 +1168,8 @@ box-shadow: none;
 touch-action: none;
 user-select: none;
 cursor: grab;
-z-index: 10;
+z-index: 30;
+contain: layout style;
 }
 .text-node:active { cursor: grabbing; }
 .text-node textarea { cursor: inherit; }
@@ -1176,6 +1225,20 @@ letter-spacing: 0.02em;
 line-height: 1.2;
 padding: 16px;
 }
+
+/* ── Объёмный текст всегда поверх нодов и изображений */
+.text-node.bold-node {
+z-index: 9500 !important;
+}
+
+/* ── REDUCED MOTION / WKWEBVIEW PERF ── */
+@media (prefers-reduced-motion: reduce) {
+.note { transition: none !important; }
+.c-line { animation: none !important; }
+.note-spawn { animation: none !important; }
+
+- { transition-duration: 0.01ms !important; }
+  }
 
 /* ── TEXT TYPE PICKER ── */
 #text-type-picker {
@@ -1818,6 +1881,19 @@ box-shadow: 0 4px 24px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.12) !im
 body.dark-bg .n-foot {
 border-top-color: rgba(255,255,255,0.06) !important;
 }
+/* Base (unskinned) notes on dark bg — make text readable */
+body.dark-bg .note:not([data-skin]) .n-title {
+color: rgba(255,255,255,0.85) !important;
+}
+body.dark-bg .note:not([data-skin]) .n-title::placeholder {
+color: rgba(255,255,255,0.3) !important;
+}
+body.dark-bg .note:not([data-skin]) .n-text {
+color: rgba(255,255,255,0.5) !important;
+}
+body.dark-bg .note:not([data-skin]) .n-text-empty::before {
+color: rgba(255,255,255,0.25) !important;
+}
 
 /* ── SPACE MARKERS ── */
 .space-marker {
@@ -1841,16 +1917,16 @@ position: fixed;
 bottom: 34px;
 left: 50%;
 transform: translateX(-50%);
-background: rgba(250,247,243,0.92);
-border: 1px solid rgba(210,185,165,0.4);
-border-radius: 28px;
-backdrop-filter: blur(28px) saturate(1.6);
--webkit-backdrop-filter: blur(28px) saturate(1.6);
-box-shadow: 0 8px 32px rgba(80,45,15,0.15);
-padding: 10px 20px;
+background: rgba(250,247,243,0.75);
+border: 1px solid rgba(210,185,165,0.55);
+border-radius: 999px;
+backdrop-filter: blur(16px) saturate(1.6) brightness(1.04);
+-webkit-backdrop-filter: blur(16px) saturate(1.6) brightness(1.04);
+box-shadow: 0 4px 20px rgba(80,45,15,0.12), inset 0 1px 0 rgba(255,255,255,0.8);
+padding: 5px 12px;
 display: none;
 align-items: center;
-gap: 16px;
+gap: 4px;
 z-index: 849;
 animation: markersIn 0.28s cubic-bezier(0.34,1.56,0.64,1) both;
 }
@@ -1861,18 +1937,20 @@ animation: markersIn 0.28s cubic-bezier(0.34,1.56,0.64,1) both;
 display: flex; align-items: center; justify-content: center;
 flex-direction: column;
 gap: 4px;
-width: 44px; height: 48px;
+padding: 7px 12px;
 cursor: pointer;
 touch-action: manipulation;
 background: none; border: none;
-border-radius: 14px;
+border-radius: 999px;
 color: #7a604e;
 font-size: 9px;
 font-family: ‘DM Sans’, sans-serif;
 font-weight: 500;
-transition: background 0.12s, transform 0.12s;
+letter-spacing: 0.02em;
+transition: background 0.15s, color 0.15s, transform 0.1s;
+white-space: nowrap;
 }
-.media-btn:active { transform: scale(0.82); background: rgba(0,0,0,0.06); }
+.media-btn:active { background: #f0e8df; transform: scale(0.88); }
 .media-btn svg { display: block; }
 
 .media-btn-sep {
@@ -1883,22 +1961,74 @@ flex-shrink: 0;
 }
 body.dark-bg .media-btn-sep { background: rgba(255,255,255,0.12); }
 
+/* ── DARK THEME: media-panel & markers-panel ── */
+body.dark-bg #media-panel {
+background: rgba(25,22,18,0.72) !important;
+border-color: rgba(255,255,255,0.08) !important;
+box-shadow: 0 4px 24px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.05) !important;
+}
+body.dark-bg .media-btn {
+color: rgba(255,255,255,0.7) !important;
+}
+body.dark-bg .media-btn:active {
+background: rgba(255,255,255,0.08) !important;
+}
+body.dark-bg .media-btn svg * {
+stroke: rgba(255,255,255,0.7) !important;
+fill: none !important;
+}
+body.dark-bg #mb-add-image svg *,
+body.dark-bg #mb-add-comment svg * {
+stroke: rgba(237,160,106,0.85) !important;
+}
+body.dark-bg #mb-settings svg *,
+body.dark-bg #mb-home svg * {
+stroke: rgba(255,255,255,0.65) !important;
+}
+/* filled elements in svg (polyline points etc) */
+body.dark-bg .media-btn svg polyline,
+body.dark-bg .media-btn svg path,
+body.dark-bg .media-btn svg rect,
+body.dark-bg .media-btn svg circle,
+body.dark-bg .media-btn svg line {
+stroke: rgba(255,255,255,0.7);
+}
+body.dark-bg #mb-add-image svg polyline,
+body.dark-bg #mb-add-image svg rect,
+body.dark-bg #mb-add-image svg circle,
+body.dark-bg #mb-add-comment svg path {
+stroke: rgba(237,160,106,0.85) !important;
+}
+
+body.dark-bg #markers-panel {
+background: rgba(25,22,18,0.72) !important;
+border-color: rgba(255,255,255,0.08) !important;
+box-shadow: 0 4px 24px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.05) !important;
+}
+body.dark-bg .marker-pick-btn:active {
+background: rgba(255,255,255,0.08) !important;
+}
+/* Boost icon opacity on dark background so sticker colors stay vivid */
+body.dark-bg .marker-pick-btn svg {
+filter: brightness(1.25) saturate(1.1);
+}
+
 #markers-panel {
 position: fixed;
 bottom: 34px;
 left: 50%;
 transform: translateX(-50%);
-background: rgba(250,247,243,0.92);
-border: 1px solid rgba(210,185,165,0.4);
-border-radius: 28px;
-backdrop-filter: blur(28px) saturate(1.6);
--webkit-backdrop-filter: blur(28px) saturate(1.6);
-box-shadow: 0 8px 32px rgba(80,45,15,0.15);
-padding: 10px 20px;
+background: rgba(250,247,243,0.75);
+border: 1px solid rgba(210,185,165,0.55);
+border-radius: 999px;
+backdrop-filter: blur(16px) saturate(1.6) brightness(1.04);
+-webkit-backdrop-filter: blur(16px) saturate(1.6) brightness(1.04);
+box-shadow: 0 4px 20px rgba(80,45,15,0.12), inset 0 1px 0 rgba(255,255,255,0.8);
+padding: 5px 10px;
 overflow: visible;
 display: none;
 align-items: center;
-gap: 16px;
+gap: 4px;
 z-index: 850;
 animation: markersIn 0.28s cubic-bezier(0.34,1.56,0.64,1) both;
 }
@@ -1908,18 +2038,16 @@ animation: markersIn 0.28s cubic-bezier(0.34,1.56,0.64,1) both;
 
 .marker-pick-btn {
 display: flex; align-items: center; justify-content: center;
-width: 38px; height: 38px;
+padding: 7px 10px;
 cursor: pointer;
 touch-action: manipulation;
-padding: 4px;
-border-radius: 10px;
+border-radius: 999px;
 overflow: visible;
-transition: transform 0.12s, background 0.12s;
+transition: background 0.15s, transform 0.1s;
 background: none;
 border: none;
-filter: drop-shadow(0 1px 3px rgba(0,0,0,0.12));
 }
-.marker-pick-btn:active { transform: scale(0.82); background: rgba(0,0,0,0.06); }
+.marker-pick-btn:active { background: #f0e8df; transform: scale(0.88); }
 .marker-pick-btn svg { display: block; }
 
 /* Btn to open markers panel */
@@ -2228,7 +2356,6 @@ z-index: 99999;
 background: #f7f4f0 !important;
 flex-direction: column;
 animation: editorIn 0.28s cubic-bezier(0.34,1.2,0.64,1);
-isolation: isolate;
 color-scheme: light only;
 color: #26201a !important;
 }
@@ -2756,7 +2883,7 @@ animation: borderPulse 1s ease-in-out 2;
 
   <div id="tb-search-wrap">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" id="tb-search-icon"><circle cx="10.5" cy="10.5" r="6.5"/><line x1="15.5" y1="15.5" x2="20" y2="20"/></svg>
-    <input type="text" id="tb-search" placeholder="поиск..." autocomplete="off" autocorrect="off" spellcheck="false">
+    <input type="text" id="tb-search" placeholder="поиск" autocomplete="off" autocorrect="off" spellcheck="false">
     <button id="tb-search-clear">✕</button>
   </div>
 
@@ -3109,7 +3236,7 @@ animation: borderPulse 1s ease-in-out 2;
   </div>
   <div class="ttp-option" id="ttp-bold">
     <span class="ttp-preview-bold">Aa</span>
-    <span class="ttp-label">Жирный</span>
+    <span class="ttp-label">Объёмный</span>
   </div>
 </div>
 
@@ -3183,55 +3310,69 @@ function openDB() {
 function saveBoards() {
   if (!historyPaused && typeof scheduleSnapshot === 'function') scheduleSnapshot();
   const data = { boards, activeBoardId };
-  // Save to IndexedDB (primary)
-  if (db) {
-    try {
-      const tx = db.transaction(STORE, 'readwrite');
-      tx.objectStore(STORE).put(data, DATA_KEY);
-      // Explicitly commit — ensures large base64 images are written
-      tx.commit && tx.commit();
-    } catch(e) {}
-  }
+  // Save to IndexedDB in idle time to avoid blocking main thread
+  const doIDB = () => {
+    if (db) {
+      try {
+        const tx = db.transaction(STORE, 'readwrite');
+        tx.objectStore(STORE).put(data, DATA_KEY);
+        tx.commit && tx.commit();
+      } catch(e) {}
+    }
+  };
   // Also save lightweight version (no media) to localStorage as quick-load cache
-  try {
-    const lite = {
-      activeBoardId,
-      boards: boards.map(b => ({
-        ...b,
-        notes: b.notes.map(n => ({ ...n, media: [] })),
-        images: [] // images stored in IDB only (base64 too large for localStorage)
-      }))
-    };
-    localStorage.setItem('board-app-v3-lite', JSON.stringify(lite));
-  } catch(e) {}
+  const doLS = () => {
+    try {
+      const lite = {
+        activeBoardId,
+        boards: boards.map(b => ({
+          ...b,
+          notes: b.notes.map(n => ({ ...n, media: [] })),
+          images: []
+        }))
+      };
+      localStorage.setItem('board-app-v3-lite', JSON.stringify(lite));
+    } catch(e) {}
+  };
+  if (window.requestIdleCallback) {
+    requestIdleCallback(() => { doIDB(); doLS(); }, { timeout: 2000 });
+  } else {
+    setTimeout(() => { doIDB(); doLS(); }, 0);
+  }
 }
 
 // Debounced save — prevents hammering IndexedDB during drag/resize
 let _saveBoardsTimer = null;
 function saveBoardsDebounced() {
   clearTimeout(_saveBoardsTimer);
-  _saveBoardsTimer = setTimeout(saveBoards, 600);
+  _saveBoardsTimer = setTimeout(saveBoards, 800);
 }
 
-// Pause / resume heavy background work during pinch zoom
+// Pause / resume heavy background work during pinch zoom or pan
 function pauseHeavyWork() {
-  // Stop wave animation rAF — main GPU hog during zoom
+  // Stop wave animation rAF — main GPU hog during zoom/pan
   if (typeof waveRaf !== 'undefined' && waveRaf) {
     cancelAnimationFrame(waveRaf);
     waveRaf = null;
   }
   document.body.classList.add('is-zooming');
+  // Remove will-change during pan (saves GPU memory — compositor re-promotes on demand)
   canvas.style.willChange = 'auto';
+  // Suspend all CSS animations on canvas children for max perf
+  canvas.style.animationPlayState = 'paused';
 }
 
 function resumeHeavyWork() {
   document.body.classList.remove('is-zooming');
   canvas.style.willChange = 'transform';
+  canvas.style.animationPlayState = '';
   // Restart wave animation
   if (typeof animateWaves === 'function' && !waveRaf) {
     animateWaves();
   }
-  updateAllConnections();
+  // Update visibility + connections once after movement stops
+  updateNoteVisibility();
+  if (typeof updateAllConnections === 'function') updateAllConnections();
   if (typeof updateSpawnArrow === 'function') updateSpawnArrow();
 }
 
@@ -3291,6 +3432,7 @@ async function loadBoardsFromDB() {
             board.notes.forEach(n => renderNote(n));
             if (board.textNodes) board.textNodes.forEach(t => renderTextNode(t));
             board.connections.forEach(c => renderConnection(c));
+            _rebuildAdjIndex();
             updateAllConnections();
             if (typeof renderAllImages === 'function') renderAllImages(board);
             if (typeof loadMarkersForBoard === 'function') loadMarkersForBoard();
@@ -3365,6 +3507,12 @@ function createBoard(name) {
   return board;
 }
 
+function _updateBackdropFilterPolicy() {
+  // Не отключаем backdrop-filter автоматически по кол-ву нодов —
+  // это ломало визуал. low-end-device ставится только на устройствах
+  // с ≤2 CPU ядрами (iPhone 6 и старше).
+}
+
 function switchBoard(id) {
   // Clear search when switching boards
   const _sq = document.getElementById('tb-search');
@@ -3388,6 +3536,7 @@ function switchBoard(id) {
   document.querySelectorAll('.text-node').forEach(e => e.remove());
   document.querySelectorAll('.comment-bubble').forEach(e => e.remove());
   document.querySelectorAll('.canvas-image').forEach(e => e.remove());
+
 
   // Restore viewport - go to spawn if set, else saved viewport
   // Use nullish coalescing-style: if board.vx is explicitly set use it,
@@ -3421,30 +3570,50 @@ function switchBoard(id) {
     }
   }, 80);
 
-  // Restore notes
-  board.notes.forEach(n => renderNote(n));
+  // Restore notes — rendered in idle-time batches to avoid blocking the main thread
+  // (each renderNote creates DOM + attaches event listeners — heavy for 20+ notes)
+  invalidateAllNoteCenters();
+  renderNotesAsync(board, () => {
+    // Restore text nodes, comments, images, connections after notes are done
+    if (board.textNodes) board.textNodes.forEach(t => renderTextNode(t));
+    renderAllComments(board);
+    renderAllImages(board);
+    board.connections.forEach(c => renderConnection(c));
+    _rebuildAdjIndex();
+    updateAllConnections();
+    _updateBackdropFilterPolicy();
+    if (boardLabel) boardLabel.textContent = board.name;
+    if (boardLocked) applyLockState();
+    loadSpawn();
 
-  // Restore text nodes
-  if (board.textNodes) board.textNodes.forEach(t => renderTextNode(t));
+  });
 
-  // Restore comment bubbles
-  renderAllComments(board);
-
-  // Restore images
-  renderAllImages(board);
-
-  // Restore connections
-  board.connections.forEach(c => renderConnection(c));
-
-  if (boardLabel) boardLabel.textContent = board.name;
   saveBoards();
   renderBoardsList();
-  if (boardLocked) applyLockState();
   // Reload spawn for new board
   spawnMarker.style.display = 'none';
   spawnActive = false;
   document.getElementById('btn-spawn').classList.remove('active');
-  loadSpawn();
+}
+
+// Render notes in small idle-time batches so the UI stays responsive.
+// Calls onDone() after all notes are rendered.
+function renderNotesAsync(board, onDone) {
+  const notes = board.notes;
+  if (!notes.length) { onDone && onDone(); return; }
+  const BATCH = 16; // notes per idle slice
+  let i = 0;
+  const idle = window.requestIdleCallback || (cb => setTimeout(cb, 0));
+  function chunk() {
+    const end = Math.min(i + BATCH, notes.length);
+    for (; i < end; i++) renderNote(notes[i]);
+    if (i < notes.length) {
+      idle(chunk);
+    } else {
+      onDone && onDone();
+    }
+  }
+  idle(chunk);
 }
 
 function deleteBoard(id) {
@@ -3575,6 +3744,8 @@ modalOverlay.addEventListener('click', e => { if (e.target === modalOverlay) clo
 // VIEWPORT
 // ─────────────────────────────────────────────────────────────────────────────
 function updateAllConnections() {
+  const board = currentBoard();
+  if (!board || !board.connections || !board.connections.length) return;
   if (_connThrottle) return;
   _connThrottle = requestAnimationFrame(() => {
     _connThrottle = null;
@@ -3586,12 +3757,96 @@ function applyTransform() {
   if (!isFinite(vx) || !isFinite(vy) || !isFinite(vz) || vz <= 0) {
     vx = 0; vy = 0; vz = 1;
   }
-  canvas.style.transform = 'translate3d(' + vx + 'px,' + vy + 'px,0) scale(' + vz + ')';
+  canvas.style.transform = 'matrix(' + vz + ',0,0,' + vz + ',' + vx + ',' + vy + ')';
   if (zoomLabel) zoomLabel.textContent = Math.round(vz * 100) + '%';
-  if (!isZooming && !isPanning) {
+  // LOD: switch detail level based on zoom
+  _applyLOD();
+  // Skip expensive DOM reads during active pan/zoom — causes layout thrashing with many nodes
+  if (!isPanning && !isZooming) {
+    updateNoteVisibility();
     updateAllConnections();
     if (typeof updateSpawnArrow === 'function') updateSpawnArrow();
   }
+}
+
+// Level-of-detail: reduce visual complexity at low zoom for massive fps gain
+let _lastLOD = '';
+function _applyLOD() {
+  const lod = vz < 0.18 ? 'low' : vz < 0.40 ? 'mid' : '';
+  if (lod === _lastLOD) return;
+  _lastLOD = lod;
+  const b = document.body;
+  b.classList.remove('lod-low', 'lod-mid');
+  if (lod) b.classList.add('lod-' + lod);
+}
+
+// Virtual rendering: hide all canvas elements outside viewport.
+// This eliminates compositing layers for off-screen backdrop-filter elements.
+let _visRaf = null;
+function updateNoteVisibility() {
+  if (_visRaf) return;
+  _visRaf = requestAnimationFrame(() => {
+    _visRaf = null;
+    const W = window.innerWidth;
+    const H = window.innerHeight;
+    const PAD = 250; // buffer so elements pop in slightly before reaching screen edge
+    const board = currentBoard();
+    if (!board) return;
+    const hasContent = (board.notes && board.notes.length) ||
+                       (board.textNodes && board.textNodes.length) ||
+                       (board.images && board.images.length) ||
+                       (board.comments && board.comments.length);
+    if (!hasContent) return;
+
+    // Notes
+    board.notes.forEach(n => {
+      const el = document.getElementById('note-' + n.id);
+      if (!el) return;
+      const sx = n.x * vz + vx;
+      const sy = n.y * vz + vy;
+      const sw = (n.w || 220) * vz;
+      const sh = (n.h || 160) * vz;
+      const vis = sx + sw > -PAD && sx < W + PAD && sy + sh > -PAD && sy < H + PAD;
+      if (vis) { el.style.visibility = ''; el.style.pointerEvents = ''; }
+      else { el.style.visibility = 'hidden'; el.style.pointerEvents = 'none'; }
+    });
+
+    // Text nodes
+    if (board.textNodes) board.textNodes.forEach(t => {
+      const el = document.getElementById('tn-' + t.id);
+      if (!el) return;
+      const sx = t.x * vz + vx;
+      const sy = t.y * vz + vy;
+      const sw = (t.w || 200) * vz;
+      const vis = sx + sw > -PAD && sx < W + PAD && sy + 80 * vz > -PAD && sy < H + PAD;
+      if (vis) { el.style.visibility = ''; el.style.pointerEvents = ''; }
+      else { el.style.visibility = 'hidden'; el.style.pointerEvents = 'none'; }
+    });
+
+    // Canvas images
+    if (board.images) board.images.forEach(img => {
+      const el = document.getElementById('ci-' + img.id);
+      if (!el) return;
+      const sx = (img.x || 0) * vz + vx;
+      const sy = (img.y || 0) * vz + vy;
+      const sw = (img.w || 200) * vz;
+      const sh = (img.h || 200) * vz;
+      const vis = sx + sw > -PAD && sx < W + PAD && sy + sh > -PAD && sy < H + PAD;
+      if (vis) { el.style.visibility = ''; el.style.pointerEvents = ''; }
+      else { el.style.visibility = 'hidden'; el.style.pointerEvents = 'none'; }
+    });
+
+    // Comment bubbles
+    if (board.comments) board.comments.forEach(c => {
+      const el = document.getElementById('cb-' + c.id);
+      if (!el) return;
+      const sx = c.x * vz + vx;
+      const sy = c.y * vz + vy;
+      const vis = sx + 200 * vz > -PAD && sx < W + PAD && sy + 100 * vz > -PAD && sy < H + PAD;
+      if (vis) { el.style.visibility = ''; el.style.pointerEvents = ''; }
+      else { el.style.visibility = 'hidden'; el.style.pointerEvents = 'none'; }
+    });
+  });
 }
 
 function applyTransformRAF() {
@@ -3904,12 +4159,13 @@ if (_btnAddComment) _btnAddComment.addEventListener('click', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 let nextImageId = 1;
 
-function addCanvasImage(x, y, dataUrl, w, h) {
+function addCanvasImage(x, y, dataUrl, w, h, isDrawing) {
   const board = currentBoard();
   if (!board) return;
   const id = nextImageId++;
   const fw = w || 200, fh = h || 200;
   const img = { id, x, y, w: fw, h: fh, cx: x + fw/2, cy: y + fh/2, src: dataUrl };
+  if (isDrawing) img.isDrawing = true;
   if (!board.images) board.images = [];
   board.images.push(img);
   renderCanvasImage(img);
@@ -3929,18 +4185,18 @@ function renderCanvasImage(img) {
   img.cx = cx; img.cy = cy;
   const deg = img.rotate || 0;
 
+  const isDrawingImg = !!img.isDrawing;
   el.style.cssText = [
     'position:absolute',
     'touch-action:none',
     'user-select:none',
-    'z-index:5',
-    'border-radius:12px',
-    'box-shadow:0 4px 20px rgba(80,45,15,0.12)',
-    'overflow:visible',          // must be visible so handles peek out
+    isDrawingImg ? 'z-index:9500' : 'z-index:2',   // drawings always on top
+    isDrawingImg ? 'border-radius:0' : 'border-radius:12px',
+    isDrawingImg ? 'box-shadow:none' : 'box-shadow:0 4px 20px rgba(80,45,15,0.12)',
+    'overflow:visible',
     'display:block',
     `width:${img.w}px`,
     `height:${img.h}px`,
-    // position by center so rotation looks natural
     `left:${cx - img.w/2}px`,
     `top:${cy  - img.h/2}px`,
     `transform:rotate(${deg}deg)`,
@@ -3948,11 +4204,16 @@ function renderCanvasImage(img) {
     'cursor:grab',
   ].join(';');
 
-  // The actual image (fills the box, no border-radius clipping issues)
+  // The actual image
   const image = document.createElement('img');
   image.src = img.src;
   image.draggable = false;
-  image.style.cssText = 'width:100%;height:100%;object-fit:cover;display:block;border-radius:12px;pointer-events:none;';
+  image.decoding = 'async';
+  image.loading = 'lazy';
+  // Drawings: contain (transparent bg), photos: cover
+  const fitStyle = isDrawingImg ? 'contain' : 'cover';
+  const radStyle = isDrawingImg ? '0' : '12px';
+  image.style.cssText = `width:100%;height:100%;object-fit:${fitStyle};display:block;border-radius:${radStyle};pointer-events:none;`;
 
   // ── Delete button (top-right, only in connect-mode) ─────────────────────
   const del = document.createElement('button');
@@ -4149,24 +4410,26 @@ function renderCanvasImage(img) {
   });
   el.addEventListener('pointermove', e => {
     if (!dragging) return;
-    img.cx = e.clientX / vz - dox;
-    img.cy = e.clientY / vz - doy;
-    img.x  = img.cx - img.w / 2;
-    img.y  = img.cy - img.h / 2;
-    el.style.left = (img.cx - img.w / 2) + 'px';
-    el.style.top  = (img.cy - img.h / 2) + 'px';
+    const ncx = e.clientX / vz - dox, ncy = e.clientY / vz - doy;
+    if (ncx === img.cx && ncy === img.cy) return;
+    img.cx = ncx; img.cy = ncy;
+    img.x  = ncx - img.w / 2;
+    img.y  = ncy - img.h / 2;
+    el.style.left = img.x + 'px';
+    el.style.top  = img.y + 'px';
   });
   el.addEventListener('pointerup', () => {
     if (!dragging) return;
     dragging = false;
     el.style.cursor = 'grab';
     el.style.boxShadow = '0 4px 20px rgba(80,45,15,0.12)';
-    el.style.zIndex = '5';
+    el.style.zIndex = '2';
+    updateConnectionsForNote(img.id); // update connections attached to image
     saveBoardsDebounced();
   });
-  el.addEventListener('pointercancel', () => { dragging = false; el.style.cursor = 'grab'; el.style.zIndex = '5'; });
+  el.addEventListener('pointercancel', () => { dragging = false; el.style.cursor = 'grab'; el.style.zIndex = '2'; });
 
-  canvas.appendChild(el);
+  canvas.insertBefore(el, canvas.firstChild);
   if (connectMode) el.classList.add('connect-mode');
   if (boardLocked) el.style.pointerEvents = 'none';
 }
@@ -4328,6 +4591,7 @@ function addNote(x, y) {
   board.notes.push(note);
   renderNote(note);
   haptic("medium");
+  _updateBackdropFilterPolicy();
   saveBoards();
   // Re-apply active search - hide new note if doesn't match
   const _sq = document.getElementById('tb-search');
@@ -4340,6 +4604,8 @@ function addNote(x, y) {
 function renderNote(note) {
   const old = document.getElementById('note-'+note.id);
   if (old) old.remove();
+  // Invalidate cached center — size may change after re-render
+  invalidateNoteCenter(note.id);
 
   // Clamp coordinates within canvas bounds (handles notes from old larger canvas)
   note.x = Math.max(0, Math.min(note.x, 2380));
@@ -4386,7 +4652,7 @@ function renderNote(note) {
   const title = document.createElement('input');
   title.className = 'n-title'; title.type = 'text';
   title.placeholder = 'Title…'; title.value = note.title;
-  title.addEventListener('input', e => { note.title = e.target.value; saveBoards(); });
+  title.addEventListener('input', e => { note.title = e.target.value; saveBoardsDebounced(); });
   title.addEventListener('pointerdown', e => e.stopPropagation());
 
   const imgBtn = document.createElement('button');
@@ -4453,6 +4719,7 @@ function renderNote(note) {
   if (!note.text) {
     ta.classList.add('n-text-empty');
   }
+  applyTextColors();
 
   const mediaList = document.createElement('div');
   mediaList.className = 'n-media'; mediaList.id = 'media-'+note.id;
@@ -4462,9 +4729,39 @@ function renderNote(note) {
 
   // Footer
   const foot = document.createElement('div'); foot.className = 'n-foot';
+
+  // Helper: apply correct tag styles based on skin + current theme
+  function styleTag(tagEl, isAdd) {
+    var skinId = note.skin;
+    var isDarkSkin = skinId === 'dark' || skinId === 'dark-blue' || skinId === 'dark-green';
+    var isLightSkin = skinId && !isDarkSkin;
+    var isDarkBg = document.body.classList.contains('dark-bg');
+    if (isLightSkin) {
+      tagEl.style.background = isAdd ? 'rgba(255,255,255,0.45)' : 'rgba(255,255,255,0.55)';
+      tagEl.style.color = isAdd ? '#8a6a52' : '#5a3e2b';
+      tagEl.style.boxShadow = isAdd ? '0 1px 4px rgba(0,0,0,0.07)' : '0 1px 4px rgba(0,0,0,0.09)';
+    } else if (!isDarkSkin && isDarkBg) {
+      tagEl.style.background = isAdd ? 'rgba(255,255,255,0.07)' : 'rgba(255,255,255,0.12)';
+      tagEl.style.color = isAdd ? 'rgba(255,255,255,0.35)' : 'rgba(255,255,255,0.65)';
+      tagEl.style.boxShadow = '';
+    }
+  }
+
+  // Helper: apply title/text color for unskinned note on dark bg
+  function applyTextColors() {
+    var skinId = note.skin;
+    var isDarkSkin = skinId === 'dark' || skinId === 'dark-blue' || skinId === 'dark-green';
+    var isDarkBg = document.body.classList.contains('dark-bg');
+    if (!skinId && isDarkBg && !isDarkSkin) {
+      title.style.color = 'rgba(255,255,255,0.85)';
+      ta.style.color = 'rgba(255,255,255,0.5)';
+    }
+  }
+
   note.tags.forEach(tag => {
     const t = document.createElement('button');
     t.className = 'n-tag'; t.textContent = tag;
+    styleTag(t, false);
     t.addEventListener('pointerdown', e => e.stopPropagation());
     t.addEventListener('click', e => {
       e.stopPropagation();
@@ -4476,6 +4773,7 @@ function renderNote(note) {
   });
   const addTag = document.createElement('button');
   addTag.className = 'n-tag add'; addTag.textContent = '+ tag';
+  styleTag(addTag, true);
   addTag.addEventListener('pointerdown', e => e.stopPropagation());
   addTag.addEventListener('click', e => {
     e.stopPropagation();
@@ -4492,6 +4790,8 @@ function renderNote(note) {
     const coverImg = document.createElement('img');
     coverImg.src = note.coverImage;
     coverImg.alt = '';
+    coverImg.decoding = 'async';
+    coverImg.loading = 'lazy';
     coverEl.appendChild(coverImg);
     el.insertBefore(coverEl, el.firstChild);
     coverEl.addEventListener('pointerdown', e => onNotePointerDown(e, note));
@@ -4539,6 +4839,15 @@ function renderNote(note) {
   if (note.shape && SHAPE_RADII) el.style.borderRadius = SHAPE_RADII[note.shape] || '';
   // Spawn animation only for new notes (not restoring)
   if (note._isNew) { el.classList.add('note-spawn'); delete note._isNew; }
+  // Estimate note height for center cache (avoids reflow in noteCenter)
+  if (!note.h) {
+    let estH = 44; // head
+    if (note.coverImage) estH += 120;
+    if (note.text) estH += Math.min(72, 16 * Math.ceil(note.text.length / 28));
+    if (note.media && note.media.length) estH += note.media.length * 80;
+    estH += 36; // footer
+    note._estH = estH;
+  }
 }
 
 function appendMediaItem(list, note, m) {
@@ -4549,6 +4858,7 @@ function appendMediaItem(list, note, m) {
     media.src = m.src; media.controls = true; media.preload = 'metadata';
   } else {
     media = document.createElement('img'); media.src = m.src; media.alt = '';
+    media.decoding = 'async'; media.loading = 'lazy';
   }
   const rm = document.createElement('button'); rm.className = 'n-media-rm'; rm.textContent = '✕';
   rm.addEventListener('click', e => {
@@ -4612,7 +4922,12 @@ fileInput.addEventListener('change', e => {
 
 function bringToFront(note) {
   const board = currentBoard(); if (!board) return;
-  const maxZ = Math.max(...board.notes.map(n => n.zIndex), 0);
+  // Use reduce instead of spread to avoid large stack allocations
+  let maxZ = 0;
+  for (let i = 0; i < board.notes.length; i++) {
+    if (board.notes[i].zIndex > maxZ) maxZ = board.notes[i].zIndex;
+  }
+  if (note.zIndex === maxZ) return; // already on top
   note.zIndex = maxZ + 1;
   const el = document.getElementById('note-'+note.id);
   if (el) el.style.zIndex = note.zIndex;
@@ -4636,11 +4951,14 @@ function deleteNote(id) {
     }
   });
   board.notes = board.notes.filter(n => n.id !== id);
+  _noteCenterCache.delete(id);
   const el = document.getElementById('note-' + id);
   if (el) {
     haptic('heavy');
     disintegrateNote(el);
   }
+  if (window.requestIdleCallback) requestIdleCallback(_rebuildAdjIndex);
+  else setTimeout(_rebuildAdjIndex, 0);
   saveBoards();
 }
 
@@ -4661,6 +4979,7 @@ function onNotePointerDown(e, note) {
 
   const el = document.getElementById('note-'+note.id);
   el.classList.add('drag');
+  el.style.willChange = 'transform'; // hint GPU layer during drag
   el.setPointerCapture(e.pointerId);
 
   el.addEventListener('pointermove', onDragMove);
@@ -4673,12 +4992,17 @@ function onDragMove(e) {
   const board = currentBoard(); if (!board) return;
   const note = board.notes.find(n => n.id === dragNoteId); if (!note) return;
   const pt = screenToCanvas(e.clientX, e.clientY);
-  note.x = pt.x - dragOff.x; note.y = pt.y - dragOff.y;
+  const nx = pt.x - dragOff.x, ny = pt.y - dragOff.y;
+  // Skip DOM write if position unchanged (coalesced events)
+  if (nx === note.x && ny === note.y) return;
+  note.x = nx; note.y = ny;
   const el = document.getElementById('note-'+note.id);
-  if (el) { el.style.left = note.x+'px'; el.style.top = note.y+'px'; }
-  // Do NOT call updateAllConnections() here — animateWaves() redraws
-  // connections every rAF frame and calling this simultaneously causes
-  // two competing setAttribute calls on the same SVG path = flicker.
+  if (el) {
+    el.style.left = nx+'px'; el.style.top = ny+'px';
+    if (el.style.visibility) { el.style.visibility = ''; el.style.pointerEvents = ''; }
+  }
+  // Invalidate cached center so animateWaves uses fresh position
+  invalidateNoteCenter(note.id);
 }
 
 function onDragUp(e) {
@@ -4687,10 +5011,13 @@ function onDragUp(e) {
   const el = document.getElementById('note-'+dragNoteId);
   if (el) {
     el.classList.remove('drag');
+    el.style.willChange = 'auto'; // release GPU layer after drag
     el.removeEventListener('pointermove', onDragMove);
     el.removeEventListener('pointerup', onDragUp);
     el.removeEventListener('pointercancel', onDragUp);
   }
+  // Update only connections of this note (not all) for perf
+  updateConnectionsForNote(dragNoteId);
   // Clamp note to working area and warn user if it was out of bounds
   const board = currentBoard();
   if (board && dragNoteId) {
@@ -4713,22 +5040,52 @@ function onDragUp(e) {
 // ─────────────────────────────────────────────────────────────────────────────
 // CONNECTIONS
 // ─────────────────────────────────────────────────────────────────────────────
+
+// Cache note center coords to avoid offsetWidth/offsetHeight reflow on every
+// animateWaves frame. Invalidate whenever a note moves or resizes.
+const _noteCenterCache = new Map();
+function invalidateNoteCenter(id) { _noteCenterCache.delete(id); }
+function invalidateAllNoteCenters() { _noteCenterCache.clear(); }
+
 function noteCenter(id) {
-  // Try regular note
+  if (_noteCenterCache.has(id)) return _noteCenterCache.get(id);
+  // Try note — use stored w/h to avoid triggering layout (offsetWidth causes reflow)
+  const board = currentBoard();
+  if (board) {
+    const note = board.notes.find(n => n.id === id);
+    if (note) {
+      const w = note.w || 220, h = note.h || note._estH || 160;
+      const r = { x: note.x + w / 2, y: note.y + h / 2 };
+      _noteCenterCache.set(id, r);
+      return r;
+    }
+    if (board.textNodes) {
+      const tn = board.textNodes.find(t => t.id === id);
+      if (tn) {
+        const r = { x: tn.x + 60, y: tn.y + 20 };
+        _noteCenterCache.set(id, r);
+        return r;
+      }
+    }
+  }
+  // Fallback: DOM read (only when board data unavailable)
   const noteEl = document.getElementById('note-' + id);
   if (noteEl) {
-    return {
-      x: parseFloat(noteEl.style.left) + noteEl.offsetWidth / 2,
-      y: parseFloat(noteEl.style.top)  + noteEl.offsetHeight / 2,
+    const r = {
+      x: parseFloat(noteEl.style.left) + (noteEl.offsetWidth  || 220) / 2,
+      y: parseFloat(noteEl.style.top)  + (noteEl.offsetHeight || 160) / 2,
     };
+    _noteCenterCache.set(id, r);
+    return r;
   }
-  // Try text node
   const tnEl = document.getElementById('tn-' + id);
   if (tnEl) {
-    return {
-      x: parseFloat(tnEl.style.left) + tnEl.offsetWidth / 2,
-      y: parseFloat(tnEl.style.top)  + tnEl.offsetHeight / 2,
+    const r = {
+      x: parseFloat(tnEl.style.left) + (tnEl.offsetWidth  || 120) / 2,
+      y: parseFloat(tnEl.style.top)  + (tnEl.offsetHeight || 40)  / 2,
     };
+    _noteCenterCache.set(id, r);
+    return r;
   }
   return { x: 0, y: 0 };
 }
@@ -4755,7 +5112,10 @@ function renderConnection(conn) {
     if (confirm('Remove connection?')) {
       const board = currentBoard(); if (!board) return;
       board.connections = board.connections.filter(c => c.id !== conn.id);
-      path.remove(); saveBoards();
+      path.remove();
+      if (window.requestIdleCallback) requestIdleCallback(_rebuildAdjIndex);
+      else setTimeout(_rebuildAdjIndex, 0);
+      saveBoards();
     }
   });
   svgLayer.appendChild(path);
@@ -4773,9 +5133,48 @@ function updateConn(conn) {
 }
 
 let _connThrottle = null;
+// Adjacency index: noteId → [conn, conn, …] for fast per-note updates
+let _connAdjIndex = new Map();
+let _adjRebuildScheduled = false;
+function _rebuildAdjIndex() {
+  if (_adjRebuildScheduled) return;
+  _adjRebuildScheduled = true;
+  setTimeout(() => {
+    _adjRebuildScheduled = false;
+    _connAdjIndex.clear();
+    const board = currentBoard(); if (!board) return;
+    board.connections.forEach(c => {
+      if (!_connAdjIndex.has(c.from)) _connAdjIndex.set(c.from, []);
+      if (!_connAdjIndex.has(c.to))   _connAdjIndex.set(c.to,   []);
+      _connAdjIndex.get(c.from).push(c);
+      _connAdjIndex.get(c.to).push(c);
+    });
+  }, 0);
+}
+
+// Update only connections touching a specific note (used during drag)
+function updateConnectionsForNote(noteId) {
+  const conns = _connAdjIndex.get(noteId);
+  if (!conns) return;
+  conns.forEach(c => updateConn(c));
+}
+
 function updateAllConnectionsNow() {
   const board = currentBoard(); if (!board) return;
-  board.connections.forEach(c => updateConn(c));
+  if (!board.connections.length) return;
+  // Read all centers first (batch reads to avoid interleaved read-write thrashing)
+  const centers = new Map();
+  board.connections.forEach(c => {
+    if (!centers.has(c.from)) centers.set(c.from, noteCenter(c.from));
+    if (!centers.has(c.to))   centers.set(c.to,   noteCenter(c.to));
+  });
+  // Then batch-write all path d attributes
+  board.connections.forEach(c => {
+    const path = document.getElementById('conn-'+c.id); if (!path) return;
+    const a = centers.get(c.from), b = centers.get(c.to);
+    if (!a || !b) return;
+    path.setAttribute('d', curvePath(a.x,a.y,b.x,b.y));
+  });
 }
 
 function createConnection(fromId, toId) {
@@ -4787,6 +5186,8 @@ function createConnection(fromId, toId) {
   const conn = { id: nextConnId++, from: fromId, to: toId };
   board.connections.push(conn);
   renderConnection(conn);
+  if (window.requestIdleCallback) requestIdleCallback(_rebuildAdjIndex);
+  else setTimeout(_rebuildAdjIndex, 0);
   saveBoards();
   showToast('Connected ✓');
 }
@@ -4842,17 +5243,22 @@ function onResizePointerDown(e, note, el) {
   el.style.transition = 'none';
   el.classList.add('resizing');
 
+  const { minW, minH } = calcMinSize(); // computed ONCE - offsetHeight reads = reflow
+  let _lastResizeW = 0, _lastResizeH = 0;
   function onMove(ev) {
     const dx = (ev.clientX - startPX) / vz;
     const dy = (ev.clientY - startPY) / vz;
-    const { minW, minH } = calcMinSize();
     const newW = Math.max(minW, startW + dx);
     const newH = Math.max(minH, startH + dy);
+    // Skip DOM write if size unchanged (coalesced events)
+    if (Math.abs(newW - _lastResizeW) < 1 && Math.abs(newH - _lastResizeH) < 1) return;
+    _lastResizeW = newW; _lastResizeH = newH;
     el.style.width  = newW + 'px';
     el.style.height = newH + 'px';
     note.w = newW;
     note.h = newH;
     tip.textContent = Math.round(newW) + ' × ' + Math.round(newH);
+    invalidateNoteCenter(note.id);
     updateAllConnections();
   }
 
@@ -4862,6 +5268,8 @@ function onResizePointerDown(e, note, el) {
     el.removeEventListener('pointercancel', onUp);
     el.classList.remove('resizing');
     el.style.transition = '';
+    delete note._estH; // force recalc
+    invalidateNoteCenter(note.id);
     saveBoards();
   }
 
@@ -4892,12 +5300,76 @@ function onCdotPointerDown(e) {
 // CANVAS TOUCH / POINTER (pan + pinch)
 // ─────────────────────────────────────────────────────────────────────────────
 // ── PINCH ZOOM (2 fingers only via touch events) ─────────────────────────────
+let _pinchVelZ  = 0;   // zoom velocity (factor per frame)
+let _pinchVelX  = 0;   // pan-during-pinch velocity X
+let _pinchVelY  = 0;   // pan-during-pinch velocity Y
+let _pinchZoomRaf = null;
+let _pinchMidX = 0, _pinchMidY = 0; // last pinch midpoint for zoom anchor
+
+function _stopPinchInertia() {
+  if (_pinchZoomRaf) { cancelAnimationFrame(_pinchZoomRaf); _pinchZoomRaf = null; }
+}
+
+function _startPinchInertia() {
+  _stopPinchInertia();
+  if (Math.abs(_pinchVelZ - 1) < 0.001 && Math.abs(_pinchVelX) < 0.5 && Math.abs(_pinchVelY) < 0.5) {
+    resumeHeavyWork(); return;
+  }
+  const FRICTION_Z = 0.82;
+  const FRICTION_P = 0.88;
+  const r = wrap.getBoundingClientRect();
+  const mx = _pinchMidX - r.left;
+  const my = _pinchMidY - r.top;
+
+  function step() {
+    _pinchVelZ  = 1 + (_pinchVelZ  - 1) * FRICTION_Z;
+    _pinchVelX *= FRICTION_P;
+    _pinchVelY *= FRICTION_P;
+
+    const stillZooming = Math.abs(_pinchVelZ - 1) > 0.0008;
+    const stillPanning = Math.abs(_pinchVelX) > 0.3 || Math.abs(_pinchVelY) > 0.3;
+
+    if (stillZooming) {
+      const nz = clamp(vz * _pinchVelZ, MIN_Z, MAX_Z);
+      if (isFinite(nz) && vz > 0) {
+        vx = mx - (mx - vx) * (nz / vz);
+        vy = my - (my - vy) * (nz / vz);
+        vz = nz;
+      }
+    }
+    if (stillPanning) {
+      vx += _pinchVelX;
+      vy += _pinchVelY;
+    }
+
+    if (!isFinite(vx) || !isFinite(vy)) { vx = 0; vy = 0; }
+    canvas.style.transform = 'matrix(' + vz + ',0,0,' + vz + ',' + vx + ',' + vy + ')';
+    if (zoomLabel) zoomLabel.textContent = Math.round(vz * 100) + '%';
+
+    if (stillZooming || stillPanning) {
+      _pinchZoomRaf = requestAnimationFrame(step);
+    } else {
+      resumeHeavyWork();
+    }
+  }
+  _pinchZoomRaf = requestAnimationFrame(step);
+}
+
+// Pinch velocity samples
+let _pinchFactorSamples = [];
+let _pinchPanSamples    = [];
+
 wrap.addEventListener('touchstart', e => {
   if (e.touches.length === 2) {
-    // Reset pinch baseline on every new 2-finger touch to avoid scale jump
+    _stopPinchInertia();
+    _stopInertia();
+    _pinchFactorSamples = [];
+    _pinchPanSamples    = [];
+    _pinchVelZ = 1; _pinchVelX = 0; _pinchVelY = 0;
     const t0 = e.touches[0], t1 = e.touches[1];
     lastPinchDist = Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY);
     lastPinchMid  = { x: (t0.clientX + t1.clientX) / 2, y: (t0.clientY + t1.clientY) / 2 };
+    _pinchMidX = lastPinchMid.x; _pinchMidY = lastPinchMid.y;
     isZooming = true;
     isPanning = false;
     pauseHeavyWork();
@@ -4911,8 +5383,7 @@ wrap.addEventListener('touchmove', e => {
     const dist = Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY);
     const midX = (t0.clientX + t1.clientX) / 2;
     const midY = (t0.clientY + t1.clientY) / 2;
-    if (lastPinchDist && dist > 0) {
-      // Clamp factor tightly to prevent runaway on sudden finger lift/place
+    if (lastPinchDist && dist > 0 && Math.abs(dist - lastPinchDist) > 0.5) {
       const rawFactor = dist / lastPinchDist;
       const factor = clamp(rawFactor, 0.90, 1.10);
       const r = wrap.getBoundingClientRect();
@@ -4927,11 +5398,21 @@ wrap.addEventListener('touchmove', e => {
           vy += midY - lastPinchMid.y;
         }
         vz = nz;
-        // Apply directly (no rAF queue — touchmove already fires in rAF cadence on iOS)
         if (!isFinite(vx) || !isFinite(vy)) { vx = 0; vy = 0; }
-        canvas.style.transform = 'translate3d(' + vx + 'px,' + vy + 'px,0) scale(' + vz + ')';
+        // Apply via direct style — applyTransformRAF would add extra delay during pinch
+        canvas.style.transform = 'matrix(' + vz + ',0,0,' + vz + ',' + vx + ',' + vy + ')';
         if (zoomLabel) zoomLabel.textContent = Math.round(vz * 100) + '%';
+        _applyLOD();
       }
+      // Track velocity samples
+      const now = performance.now();
+      _pinchFactorSamples.push({ factor, t: now });
+      if (_pinchFactorSamples.length > 5) _pinchFactorSamples.shift();
+      if (lastPinchMid) {
+        _pinchPanSamples.push({ dx: midX - lastPinchMid.x, dy: midY - lastPinchMid.y, t: now });
+        if (_pinchPanSamples.length > 5) _pinchPanSamples.shift();
+      }
+      _pinchMidX = midX; _pinchMidY = midY;
     }
     lastPinchDist = dist;
     lastPinchMid = { x: midX, y: midY };
@@ -4945,19 +5426,74 @@ wrap.addEventListener('touchend', e => {
   }
   if (e.touches.length === 0) {
     isZooming = false;
-    setTimeout(resumeHeavyWork, 150);
+    // Compute zoom + pan velocity from recent samples
+    const now = performance.now();
+    const freshZ = _pinchFactorSamples.filter(s => now - s.t < 80);
+    const freshP = _pinchPanSamples.filter(s => now - s.t < 80);
+    if (freshZ.length >= 2) {
+      const avgFactor = freshZ.reduce((a, s) => a + s.factor, 0) / freshZ.length;
+      _pinchVelZ = 1 + (avgFactor - 1) * 0.7;
+    } else {
+      _pinchVelZ = 1;
+    }
+    if (freshP.length >= 1) {
+      _pinchVelX = freshP.reduce((a, s) => a + s.dx, 0) / freshP.length * 0.8;
+      _pinchVelY = freshP.reduce((a, s) => a + s.dy, 0) / freshP.length * 0.8;
+    } else {
+      _pinchVelX = 0; _pinchVelY = 0;
+    }
+    _startPinchInertia();
+    _pinchFactorSamples = [];
+    _pinchPanSamples    = [];
   }
 });
 
-// ── PAN & SINGLE TOUCH via Pointer Events ─────────────────────────────────────
+// ── PAN & SINGLE TOUCH via Pointer Events (with inertia) ──────────────────────
+// Velocity tracking — keep last N samples for smooth flick detection
+let _velX = 0, _velY = 0;
+let _velSamples = [];
+let _inertiaRaf = null;
+
+function _stopInertia() {
+  if (_inertiaRaf) { cancelAnimationFrame(_inertiaRaf); _inertiaRaf = null; }
+}
+
+function _startInertia() {
+  _stopInertia();
+  // Only kick off if there's meaningful velocity
+  if (Math.abs(_velX) < 0.5 && Math.abs(_velY) < 0.5) { resumeHeavyWork(); return; }
+  const FRICTION = 0.92; // lower = stops faster, higher = slides longer
+  const MIN_VEL  = 0.3;
+
+  function step() {
+    _velX *= FRICTION;
+    _velY *= FRICTION;
+    if (Math.abs(_velX) < MIN_VEL && Math.abs(_velY) < MIN_VEL) {
+      resumeHeavyWork();
+      updateAllConnections();
+      if (typeof updateSpawnArrow === 'function') updateSpawnArrow();
+      return;
+    }
+    vx += _velX;
+    vy += _velY;
+    canvas.style.transform = 'matrix(' + vz + ',0,0,' + vz + ',' + vx + ',' + vy + ')';
+    _inertiaRaf = requestAnimationFrame(step);
+  }
+  _inertiaRaf = requestAnimationFrame(step);
+}
+
 wrap.addEventListener('pointerdown', e => {
   if (e.target !== wrap && e.target !== canvas && e.target !== svgLayer) return;
+  _stopInertia();
+  _velX = 0; _velY = 0; _velSamples = [];
   pointers[e.pointerId] = {x: e.clientX, y: e.clientY};
   wrap.setPointerCapture(e.pointerId);
   const ids = Object.keys(pointers);
   if (ids.length === 1) {
     isPanning = true;
     panStart = { x: e.clientX, y: e.clientY, vx, vy };
+    document.body.classList.add('is-panning');
+    pauseHeavyWork();
   } else {
     isPanning = false;
     panStart = null;
@@ -4966,12 +5502,27 @@ wrap.addEventListener('pointerdown', e => {
 
 wrap.addEventListener('pointermove', e => {
   if (!pointers[e.pointerId]) return;
-  pointers[e.pointerId] = {x: e.clientX, y: e.clientY};
   const ids = Object.keys(pointers);
   if (ids.length === 1 && isPanning && panStart) {
-    vx = panStart.vx + (e.clientX - panStart.x);
-    vy = panStart.vy + (e.clientY - panStart.y);
+    // Use last coalesced event for position (most accurate), middle ones for velocity
+    const events = e.getCoalescedEvents ? e.getCoalescedEvents() : [e];
+    const last = events[events.length - 1];
+    const prev = pointers[e.pointerId];
+    // Velocity from all coalesced events
+    const now = performance.now();
+    events.forEach(ce => {
+      const dx = ce.clientX - prev.x, dy = ce.clientY - prev.y;
+      if (Math.abs(dx) > 0.1 || Math.abs(dy) > 0.1) {
+        _velSamples.push({ dx, dy, t: now });
+        if (_velSamples.length > 6) _velSamples.shift();
+      }
+    });
+    pointers[e.pointerId] = {x: last.clientX, y: last.clientY};
+    vx = panStart.vx + (last.clientX - panStart.x);
+    vy = panStart.vy + (last.clientY - panStart.y);
     applyTransformRAF();
+  } else {
+    pointers[e.pointerId] = {x: e.clientX, y: e.clientY};
   }
 });
 
@@ -4980,8 +5531,27 @@ wrap.addEventListener('pointerup', e => {
   const ids = Object.keys(pointers);
   if (ids.length === 0) {
     isPanning = false;
+    document.body.classList.remove('is-panning');
     lastPinchDist = null;
-    if (!isZooming) updateAllConnections();
+
+    // Compute velocity from recent samples
+    if (_velSamples.length >= 2) {
+      const recent = _velSamples.slice(-3);
+      const now = performance.now();
+      // Discard samples older than 80ms (finger paused before lift)
+      const fresh = recent.filter(s => now - s.t < 80);
+      if (fresh.length >= 1) {
+        const avg = fresh.reduce((a, s) => ({ dx: a.dx + s.dx, dy: a.dy + s.dy }), { dx: 0, dy: 0 });
+        _velX = (avg.dx / fresh.length) * 0.85;
+        _velY = (avg.dy / fresh.length) * 0.85;
+        _startInertia();
+      } else {
+        resumeHeavyWork();
+      }
+    } else {
+      resumeHeavyWork();
+    }
+    _velSamples = [];
   } else if (ids.length === 1 && !isZooming) {
     const [p] = Object.values(pointers);
     panStart = { x: p.x, y: p.y, vx, vy };
@@ -4990,12 +5560,22 @@ wrap.addEventListener('pointerup', e => {
 });
 wrap.addEventListener('pointercancel', e => {
   delete pointers[e.pointerId];
-  if (Object.keys(pointers).length === 0) { isPanning = false; lastPinchDist = null; }
+  if (Object.keys(pointers).length === 0) {
+    isPanning = false;
+    document.body.classList.remove('is-panning');
+    lastPinchDist = null;
+    _stopInertia();
+    resumeHeavyWork();
+  }
 });
 
 // Mouse wheel zoom
+let _wheelRafPending = false;
 wrap.addEventListener('wheel', e => {
   e.preventDefault();
+  if (_wheelRafPending) return;
+  _wheelRafPending = true;
+  requestAnimationFrame(() => { _wheelRafPending = false; });
   const factor = e.deltaY < 0 ? 1.10 : 0.91;
   zoomAround(factor, e.clientX, e.clientY);
   if (!_rafPending) {
@@ -5130,7 +5710,19 @@ window.addEventListener('beforeunload', () => { saveViewport(); saveBoards(); })
 // pagehide is critical for iOS Safari – fires when swiping away
 window.addEventListener('pagehide', () => { saveViewport(); saveBoards(); });
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'hidden') { saveViewport(); saveBoards(); }
+  if (document.visibilityState === 'hidden') {
+    saveViewport(); saveBoards();
+    // Pause wave animation when tab is hidden (saves battery/CPU)
+    if (typeof waveRaf !== 'undefined' && waveRaf) {
+      cancelAnimationFrame(waveRaf);
+      waveRaf = null;
+    }
+  } else if (document.visibilityState === 'visible') {
+    // Resume wave animation when tab becomes visible
+    if (typeof animateWaves === 'function' && !waveRaf) {
+      animateWaves();
+    }
+  }
 });
 // Auto-save every 15s (faster than before)
 setInterval(saveBoards, 15000);
@@ -5148,9 +5740,7 @@ function applyBgColor(color) {
   const dark = isColorDark(color);
   const dotColor = dark ? 'rgba(255,255,255,0.1)' : 'rgba(140,100,60,0.12)';
   const bgImage = `radial-gradient(circle, ${dotColor} 1.3px, transparent 1.3px)`;
-  
-  // Set on both body AND wrap to ensure visibility
-  document.body.style.cssText += `;background-color:${color};background-image:${bgImage};background-size:26px 26px`;
+
   const wrap = document.getElementById('wrap');
   if (wrap) {
     wrap.style.backgroundColor = color;
@@ -5163,6 +5753,41 @@ function applyBgColor(color) {
 
   // Toggle dark-mode class on body for CSS theming
   document.body.classList.toggle('dark-bg', dark);
+
+  // Update tag colors on all existing notes to match new theme
+  document.querySelectorAll('.note').forEach(function(noteEl) {
+    var skinId = noteEl.getAttribute('data-skin');
+    var isDarkSkin = skinId === 'dark' || skinId === 'dark-blue' || skinId === 'dark-green';
+    if (isDarkSkin) return;
+    var isLightSkin = skinId && !isDarkSkin;
+    if (isLightSkin) {
+      // Light skins always get dark text + shadow — same regardless of canvas theme
+      noteEl.querySelectorAll('.n-tag:not(.add)').forEach(function(e) {
+        e.style.background = 'rgba(255,255,255,0.55)'; e.style.color = '#5a3e2b'; e.style.boxShadow = '0 1px 4px rgba(0,0,0,0.09)';
+      });
+      noteEl.querySelectorAll('.n-tag.add').forEach(function(e) {
+        e.style.background = 'rgba(255,255,255,0.45)'; e.style.color = '#8a6a52'; e.style.boxShadow = '0 1px 4px rgba(0,0,0,0.07)';
+      });
+    } else {
+      // Base/unskinned note
+      if (dark) {
+        noteEl.querySelectorAll('.n-tag:not(.add)').forEach(function(e) {
+          e.style.background = 'rgba(255,255,255,0.12)'; e.style.color = 'rgba(255,255,255,0.65)'; e.style.boxShadow = '';
+        });
+        noteEl.querySelectorAll('.n-tag.add').forEach(function(e) {
+          e.style.background = 'rgba(255,255,255,0.07)'; e.style.color = 'rgba(255,255,255,0.35)'; e.style.boxShadow = '';
+        });
+        noteEl.querySelectorAll('.n-title').forEach(function(e) { e.style.color = 'rgba(255,255,255,0.85)'; });
+        noteEl.querySelectorAll('.n-text').forEach(function(e) { e.style.color = 'rgba(255,255,255,0.5)'; });
+      } else {
+        noteEl.querySelectorAll('.n-tag').forEach(function(e) {
+          e.style.background = ''; e.style.color = ''; e.style.boxShadow = '';
+        });
+        noteEl.querySelectorAll('.n-title').forEach(function(e) { e.style.color = ''; });
+        noteEl.querySelectorAll('.n-text').forEach(function(e) { e.style.color = ''; });
+      }
+    }
+  });
 
   // Update toolbar text color for dark backgrounds
   const toolbar = document.getElementById('toolbar');
@@ -5209,13 +5834,23 @@ applyBgColor(loadBgColor());
 function openSettings(open) {
   settingsPanel.classList.toggle('open', open);
   document.body.classList.toggle('settings-open', open);
-  // iOS Safari: will-change:transform creates compositing layer that renders
-  // above fixed elements. Remove it when settings is open.
   canvas.style.willChange = open ? 'auto' : 'transform';
-  // Also hide the dots explicitly
   document.querySelectorAll('.note-menu-btn, .note-resize').forEach(el => {
     el.style.visibility = open ? 'hidden' : '';
   });
+  // Invisible backdrop to catch tap-outside-to-close
+  let bd = document.getElementById('settings-backdrop');
+  if (open) {
+    if (!bd) {
+      bd = document.createElement('div');
+      bd.id = 'settings-backdrop';
+      bd.style.cssText = 'position:fixed;inset:0;z-index:9999;background:transparent;';
+      bd.addEventListener('click', () => openSettings(false));
+      document.body.appendChild(bd);
+    }
+  } else {
+    if (bd) bd.remove();
+  }
 }
 document.getElementById('btn-settings').addEventListener('click', e => {
   e.stopPropagation();
@@ -5466,11 +6101,11 @@ function renderTextNode(tn) {
   if (existing) existing.remove();
 
   const el = document.createElement('div');
-  el.className = 'text-node';
+  el.className = 'text-node' + (tn.style === 'bold' ? ' bold-node' : '');
   el.id = 'tn-' + tn.id;
   el.style.left = tn.x + 'px';
   el.style.top  = tn.y + 'px';
-  el.style.zIndex = tn.zIndex;
+  el.style.zIndex = tn.style === 'bold' ? 9500 : tn.zIndex;
   if (tn.w) { el.style.width = tn.w + 'px'; el.style.maxWidth = 'none'; }
 
   // ── Textarea ─────────────────────────────────────────────────
@@ -5535,10 +6170,13 @@ function renderTextNode(tn) {
       if (!dragStarted && Math.abs(dx) < 4 && Math.abs(dy) < 4) return;
       dragStarted = true;
       if (tapTimer) { clearTimeout(tapTimer); tapTimer = null; }
-      tn.x = ox + dx; tn.y = oy + dy;
-      el.style.left = tn.x + 'px';
-      el.style.top  = tn.y + 'px';
-      updateAllConnections();
+      const nx = ox + dx, ny = oy + dy;
+      if (nx === tn.x && ny === tn.y) return;
+      tn.x = nx; tn.y = ny;
+      el.style.left = nx + 'px';
+      el.style.top  = ny + 'px';
+      invalidateNoteCenter(tn.id);
+      updateConnectionsForNote(tn.id); // adjacency index - faster than all connections
     }
 
     function onUp() {
@@ -5919,28 +6557,57 @@ amp:   8 + Math.random() * 14,
 
 let waveTime = 0;
 let waveRaf = null;
+let _waveLastTime = 0;
 
 let isZooming = false;
 let zoomEndTimer = null;
 
-function animateWaves() {
+function animateWaves(now) {
 waveRaf = requestAnimationFrame(animateWaves);
-// Skip wave animation during zoom to prevent WebKit overload
-if (isZooming) return;
-waveTime += 0.018;
+if (isZooming || isPanning) return;
+// Adaptive fps: 15fps at low zoom (lod-low), 20fps mid, 30fps normal
+const fpsInterval = _lastLOD === 'low' ? 66 : _lastLOD === 'mid' ? 50 : 33;
+if (now - _waveLastTime < fpsInterval) return;
+_waveLastTime = now;
+waveTime += 0.036;
 const board = currentBoard();
 if (!board || !board.connections.length) return;
+// Extra throttle for large boards: 20fps for 20+ connections, 15fps for 40+
+const connCount = board.connections.length;
+const extraThrottle = connCount > 40 ? 80 : connCount > 20 ? 55 : 0;
+if (extraThrottle > fpsInterval && now - _waveLastTime < extraThrottle) return;
+// WKWebView: with many connections disable wave entirely (just update static paths)
+if (connCount > 60) {
+  board.connections.forEach(c => {
+    try {
+      const a = noteCenter(c.from), b = noteCenter(c.to); if (!a||!b) return;
+      const path = document.getElementById('conn-'+c.id); if (!path) return;
+      path.setAttribute('d', curvePath(a.x,a.y,b.x,b.y,0,0));
+    } catch(e) {}
+  });
+  return;
+}
+// Pre-compute visible viewport bounds once (avoid per-conn recompute)
+const W = window.innerWidth, H = window.innerHeight;
+const PAD = 300;
 board.connections.forEach(conn => {
 try {
+const a = noteCenter(conn.from), b = noteCenter(conn.to);
+if (!a || !b) return;
+// Cull connections where both endpoints are off-screen
+const ax = a.x * vz + vx, ay = a.y * vz + vy;
+const bx = b.x * vz + vx, by = b.y * vz + vy;
+const minX = Math.min(ax, bx), maxX = Math.max(ax, bx);
+const minY = Math.min(ay, by), maxY = Math.max(ay, by);
+if (maxX < -PAD || minX > W + PAD || maxY < -PAD || minY > H + PAD) return;
 initConnWave(conn.id);
 const p = connWavePhases[conn.id];
 if (!p) return;
-const w1 = Math.sin(waveTime * p.speed + p.phase1) * p.amp;
-const w2 = Math.sin(waveTime * p.speed + p.phase2 + 1.2) * p.amp * 0.7;
+// At low LOD, skip wave animation entirely — just static path
+const w1 = _lastLOD === 'low' ? 0 : Math.sin(waveTime * p.speed + p.phase1) * p.amp;
+const w2 = _lastLOD === 'low' ? 0 : Math.sin(waveTime * p.speed + p.phase2 + 1.2) * p.amp * 0.7;
 const path = document.getElementById('conn-' + conn.id);
 if (!path) return;
-const a = noteCenter(conn.from), b = noteCenter(conn.to);
-if (!a || !b) return;
 path.setAttribute('d', curvePath(a.x, a.y, b.x, b.y, w1, w2));
 } catch(e) {}
 });
@@ -6426,7 +7093,10 @@ let snapshotTimer = null;
 // Debounced - won't fire more than once per 600ms
 function scheduleSnapshot() {
 clearTimeout(snapshotTimer);
-snapshotTimer = setTimeout(takeSnapshot, 600);
+snapshotTimer = setTimeout(() => {
+  if (window.requestIdleCallback) requestIdleCallback(takeSnapshot, { timeout: 2000 });
+  else takeSnapshot();
+}, 1200);
 }
 
 function takeSnapshot() {
@@ -6439,9 +7109,10 @@ if (historyIndex < historyStack.length - 1) {
 historyStack = historyStack.slice(0, historyIndex + 1);
 }
 
-// Deep clone current board state
+// Deep clone current board state — exclude base64 media to keep snapshot small
+// (media is preserved in IndexedDB; undo/redo only tracks structure changes)
 const snapshot = JSON.stringify({
-notes: board.notes,
+notes: board.notes.map(n => ({ ...n, media: [] })),
 connections: board.connections,
 textNodes: board.textNodes || [],
 });
@@ -6544,6 +7215,31 @@ el.querySelectorAll('.n-tag').forEach(function(e) {
 e.style.background = ''; e.style.color = ''; e.style.borderColor = '';
 });
 el.querySelectorAll('.n-title, .n-text').forEach(function(e) { e.style.color = ''; });
+
+// Light skins: always dark text + shadow so tags are visible on any canvas bg
+var isLightSkin = skinId && skinId !== 'dark' && skinId !== 'dark-blue' && skinId !== 'dark-green';
+if (isLightSkin) {
+  el.querySelectorAll('.n-tag:not(.add)').forEach(function(e) {
+    e.style.background = 'rgba(255,255,255,0.55)';
+    e.style.color = '#5a3e2b';
+    e.style.boxShadow = '0 1px 4px rgba(0,0,0,0.09)';
+  });
+  el.querySelectorAll('.n-tag.add').forEach(function(e) {
+    e.style.background = 'rgba(255,255,255,0.45)';
+    e.style.color = '#8a6a52';
+    e.style.boxShadow = '0 1px 4px rgba(0,0,0,0.07)';
+  });
+}
+// Base/unskinned on dark-bg: subtle white tags
+var isDarkBg = document.body.classList.contains('dark-bg');
+if (isDarkBg && !skinId) {
+  el.querySelectorAll('.n-tag:not(.add)').forEach(function(e) {
+    e.style.background = 'rgba(255,255,255,0.12)'; e.style.color = 'rgba(255,255,255,0.65)'; e.style.boxShadow = '';
+  });
+  el.querySelectorAll('.n-tag.add').forEach(function(e) {
+    e.style.background = 'rgba(255,255,255,0.07)'; e.style.color = 'rgba(255,255,255,0.35)'; e.style.boxShadow = '';
+  });
+}
 
 if (skinId) {
 el.setAttribute('data-skin', skinId);
@@ -7292,18 +7988,15 @@ drawBtn.addEventListener('click', () => {
   } else {
     // Exiting: if user drew something, export as PNG and add as free image
     if (strokes.length > 0) {
-      const pngData = canvas.toDataURL('image/png');
+      // Crop canvas to actual drawn content (tight bbox + padding)
+      const cropped = cropCanvasToContent(canvas, 12);
       // Clear canvas and strokes so next session is fresh
       strokes = [];
       redrawAll();
-      // Insert as free-floating image in editor
-      const img2 = new window.Image();
-      img2.onload = () => {
-        insertImageInEditor(pngData, img2.naturalWidth, img2.naturalHeight, true);
-      };
-      img2.src = pngData;
+      if (cropped) {
+        insertImageInEditor(cropped.dataUrl, cropped.w, cropped.h, true);
+      }
     } else {
-      // Nothing drawn — just clear
       strokes = [];
       redrawAll();
     }
@@ -7333,32 +8026,228 @@ function redrawAll() {
   const dpr = window.devicePixelRatio || 1;
   ctx.clearRect(0, 0, canvas.width / dpr, canvas.height / dpr);
   strokes.forEach(s => drawStroke(s));
+  // Invalidate baked cache
+  bakedCanvas = null; bakedCtx = null;
 }
 
+// ── Catmull-Rom → Bezier conversion for smooth curves ──
+function catmullRomToBezier(pts) {
+  const segs = [];
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = pts[Math.max(0, i - 1)];
+    const p1 = pts[i];
+    const p2 = pts[i + 1];
+    const p3 = pts[Math.min(pts.length - 1, i + 2)];
+    const tension = 0.4;
+    segs.push({
+      cp1x: p1.x + (p2.x - p0.x) * tension,
+      cp1y: p1.y + (p2.y - p0.y) * tension,
+      cp2x: p2.x - (p3.x - p1.x) * tension,
+      cp2y: p2.y - (p3.y - p1.y) * tension,
+      x:    p2.x,
+      y:    p2.y,
+    });
+  }
+  return segs;
+}
+
+// ── Draw a single stroke with smooth curves + velocity taper ──
 function drawStroke(s) {
-  if (!s.pts || s.pts.length < 2) return;
+  if (!s.pts || s.pts.length < 1) return;
+  const pts = s.pts;
   ctx.save();
   ctx.globalCompositeOperation = s.eraser ? 'destination-out' : 'source-over';
-  ctx.strokeStyle = s.color;
-  ctx.lineWidth   = s.width;
-  ctx.lineCap     = 'round';
-  ctx.lineJoin    = 'round';
-  ctx.beginPath();
-  const pts = s.pts;
-  ctx.moveTo(pts[0].x, pts[0].y);
-  if (pts.length === 2) {
-    ctx.lineTo(pts[1].x, pts[1].y);
-  } else {
-    for (let i = 1; i < pts.length - 1; i++) {
-      const mx = (pts[i].x + pts[i + 1].x) / 2;
-      const my = (pts[i].y + pts[i + 1].y) / 2;
-      ctx.quadraticCurveTo(pts[i].x, pts[i].y, mx, my);
+  ctx.lineCap  = 'round';
+  ctx.lineJoin = 'round';
+
+  if (s.eraser) {
+    // Eraser: simple thick line, no taper
+    ctx.strokeStyle = 'rgba(0,0,0,1)';
+    ctx.lineWidth = s.width * 2.5;
+    ctx.beginPath();
+    ctx.moveTo(pts[0].x, pts[0].y);
+    if (pts.length === 1) {
+      ctx.arc(pts[0].x, pts[0].y, s.width, 0, Math.PI * 2);
+      ctx.fill();
+    } else {
+      const segs = catmullRomToBezier(pts);
+      segs.forEach(seg => ctx.bezierCurveTo(seg.cp1x, seg.cp1y, seg.cp2x, seg.cp2y, seg.x, seg.y));
+      ctx.stroke();
     }
-    ctx.lineTo(pts[pts.length - 1].x, pts[pts.length - 1].y);
+    ctx.restore();
+    return;
   }
-  ctx.stroke();
+
+  if (pts.length === 1) {
+    // Single dot
+    ctx.fillStyle = s.color;
+    ctx.beginPath();
+    ctx.arc(pts[0].x, pts[0].y, s.width / 2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+    return;
+  }
+
+  // Smooth tapered stroke using variable-width segments
+  // Each segment drawn as a filled quad between two offset normals
+  const segs = catmullRomToBezier(pts);
+
+  // Compute per-point widths from velocity (fast = thin, slow = thick)
+  const widths = [s.width];
+  for (let i = 1; i < pts.length; i++) {
+    const dx = pts[i].x - pts[i-1].x;
+    const dy = pts[i].y - pts[i-1].y;
+    const speed = Math.sqrt(dx*dx + dy*dy);
+    // Map speed to width: 0px/pt → full width, 20+px/pt → 40% width
+    const factor = Math.max(0.38, 1 - speed * 0.028);
+    // Smooth with previous
+    const prev = widths[i-1];
+    widths.push(prev * 0.6 + s.width * factor * 0.4);
+  }
+  // Taper start and end
+  const taperLen = Math.min(6, Math.floor(pts.length * 0.18));
+  for (let i = 0; i < taperLen; i++) {
+    const t = i / taperLen;
+    widths[i] *= (0.1 + 0.9 * t);
+    widths[pts.length - 1 - i] *= (0.1 + 0.9 * t);
+  }
+
+  // Draw as series of small filled circles along the bezier path
+  // (simpler + cross-browser consistent vs stroke with varying lineWidth)
+  ctx.fillStyle = s.color;
+  // Sample along bezier segments at ~2px intervals
+  for (let si = 0; si < segs.length; si++) {
+    const p0 = pts[si];
+    const seg = segs[si];
+    const w0 = widths[si];
+    const w1 = widths[si + 1];
+    // Estimate segment length for sampling count
+    const dx = seg.x - p0.x, dy = seg.y - p0.y;
+    const approxLen = Math.sqrt(dx*dx + dy*dy) * 1.3;
+    const steps = Math.max(2, Math.ceil(approxLen / 1.5));
+    for (let k = 0; k <= steps; k++) {
+      const t = k / steps;
+      const mt = 1 - t;
+      // Cubic bezier point
+      const bx = mt*mt*mt*p0.x + 3*mt*mt*t*seg.cp1x + 3*mt*t*t*seg.cp2x + t*t*t*seg.x;
+      const by = mt*mt*mt*p0.y + 3*mt*mt*t*seg.cp1y + 3*mt*t*t*seg.cp2y + t*t*t*seg.y;
+      const r = (w0 + (w1 - w0) * t) / 2;
+      ctx.beginPath();
+      ctx.arc(bx, by, Math.max(0.5, r), 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
   ctx.restore();
 }
+
+// ── Offscreen "baked" canvas for completed strokes ──
+// Current stroke is drawn incrementally on top without full redraw
+let bakedCanvas = null;
+let bakedCtx    = null;
+
+function ensureBaked() {
+  const dpr = window.devicePixelRatio || 1;
+  if (!bakedCanvas || bakedCanvas.width !== canvas.width || bakedCanvas.height !== canvas.height) {
+    bakedCanvas = document.createElement('canvas');
+    bakedCanvas.width  = canvas.width;
+    bakedCanvas.height = canvas.height;
+    bakedCtx = bakedCanvas.getContext('2d');
+    bakedCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+}
+
+function bakeStrokes() {
+  ensureBaked();
+  const dpr = window.devicePixelRatio || 1;
+  bakedCtx.clearRect(0, 0, bakedCanvas.width / dpr, bakedCanvas.height / dpr);
+  strokes.forEach(s => {
+    // Temporarily redirect ctx to bakedCtx
+    const realCtx = ctx;
+    // Use a temporary swap trick
+    bakedCtx.save();
+    const oldCtx = ctx;
+    // draw directly using bakedCtx
+    drawStrokeOnCtx(bakedCtx, s);
+    bakedCtx.restore();
+  });
+}
+
+// ── Draw a stroke on a specific context (DRY helper) ──
+function drawStrokeOnCtx(c, s) {
+  if (!s.pts || s.pts.length < 1) return;
+  const pts = s.pts;
+  c.save();
+  c.globalCompositeOperation = s.eraser ? 'destination-out' : 'source-over';
+  c.lineCap  = 'round';
+  c.lineJoin = 'round';
+
+  if (s.eraser) {
+    c.strokeStyle = 'rgba(0,0,0,1)';
+    c.lineWidth = s.width * 2.5;
+    c.beginPath();
+    c.moveTo(pts[0].x, pts[0].y);
+    if (pts.length > 1) {
+      const segs = catmullRomToBezier(pts);
+      segs.forEach(seg => c.bezierCurveTo(seg.cp1x, seg.cp1y, seg.cp2x, seg.cp2y, seg.x, seg.y));
+      c.stroke();
+    }
+    c.restore();
+    return;
+  }
+
+  if (pts.length === 1) {
+    c.fillStyle = s.color;
+    c.beginPath();
+    c.arc(pts[0].x, pts[0].y, s.width / 2, 0, Math.PI * 2);
+    c.fill();
+    c.restore();
+    return;
+  }
+
+  // Apply Chaikin for final smooth render (3 passes)
+  const smoothPts = chaikinSmooth(pts, 3);
+  const segs = catmullRomToBezier(smoothPts);
+  const widths = [s.width];
+  for (let i = 1; i < smoothPts.length; i++) {
+    const dx = smoothPts[i].x - smoothPts[i-1].x;
+    const dy = smoothPts[i].y - smoothPts[i-1].y;
+    const speed = Math.sqrt(dx*dx + dy*dy);
+    const factor = Math.max(0.38, 1 - speed * 0.028);
+    const prev = widths[i-1];
+    widths.push(prev * 0.6 + s.width * factor * 0.4);
+  }
+  const taperLen = Math.min(6, Math.floor(smoothPts.length * 0.18));
+  for (let i = 0; i < taperLen; i++) {
+    const t = i / taperLen;
+    widths[i] *= (0.1 + 0.9 * t);
+    widths[smoothPts.length - 1 - i] *= (0.1 + 0.9 * t);
+  }
+
+  c.fillStyle = s.color;
+  for (let si = 0; si < segs.length; si++) {
+    const p0 = smoothPts[si];
+    const seg = segs[si];
+    const w0 = widths[si];
+    const w1 = widths[si + 1];
+    const dx = seg.x - p0.x, dy = seg.y - p0.y;
+    const approxLen = Math.sqrt(dx*dx + dy*dy) * 1.3;
+    const steps = Math.max(2, Math.ceil(approxLen / 1.5));
+    for (let k = 0; k <= steps; k++) {
+      const t = k / steps;
+      const mt = 1 - t;
+      const bx = mt*mt*mt*p0.x + 3*mt*mt*t*seg.cp1x + 3*mt*t*t*seg.cp2x + t*t*t*seg.x;
+      const by = mt*mt*mt*p0.y + 3*mt*mt*t*seg.cp1y + 3*mt*t*t*seg.cp2y + t*t*t*seg.y;
+      const r = (w0 + (w1 - w0) * t) / 2;
+      c.beginPath();
+      c.arc(bx, by, Math.max(0.5, r), 0, Math.PI * 2);
+      c.fill();
+    }
+  }
+  c.restore();
+}
+
+// Override drawStroke to use the helper
+function drawStroke(s) { drawStrokeOnCtx(ctx, s); }
 
 // ── Pointer position relative to canvas ──
 function canvasPos(e) {
@@ -7367,36 +8256,120 @@ function canvasPos(e) {
   return { x: src.clientX - rect.left, y: src.clientY - rect.top };
 }
 
-// ── Pointer events ──
+// ── Pointer events with lazy-brush smoothing ──────────────────────────────────
+// "Lazy brush" = brush trails the finger by LAZY_FACTOR.
+// 0 = no lag (raw), 1 = brush never moves. 0.55 feels like Procreate's Streamline ~60%.
+const LAZY_FACTOR = 0.55;
+
+// EMA α for pre-smoothing raw input before lazy brush
+const EMA_ALPHA = 0.35;
+
+let _rawPts    = [];   // raw coalesced points from pointer
+let _emaPt     = null; // EMA-smoothed cursor position
+let _lazyPt    = null; // current brush tip position (lags behind cursor)
+let _drawRaf   = null; // rAF handle for render loop
+
 function onDown(e) {
   if (!drawMode) return;
   e.preventDefault(); e.stopPropagation();
-  painting  = true;
-  const pt  = canvasPos(e);
-  curStroke = { color, width: lineWidth, eraser: tool === 'eraser', pts: [pt] };
+  painting = true;
+  const pt = canvasPos(e);
+  _rawPts  = [pt];
+  _emaPt   = { ...pt };
+  _lazyPt  = { ...pt };
+  curStroke = { color, width: lineWidth, eraser: tool === 'eraser', pts: [{ ...pt }] };
+  // Bake all completed strokes to offscreen canvas
+  ensureBaked();
+  const dpr = window.devicePixelRatio || 1;
+  bakedCtx.clearRect(0, 0, bakedCanvas.width / dpr, bakedCanvas.height / dpr);
+  strokes.forEach(s => drawStrokeOnCtx(bakedCtx, s));
 }
 
 function onMove(e) {
   if (!drawMode || !painting || !curStroke) return;
   e.preventDefault(); e.stopPropagation();
-  const pt = canvasPos(e);
-  const pts = curStroke.pts;
-  const last = pts[pts.length - 1];
-  const dx = pt.x - last.x, dy = pt.y - last.y;
-  if (dx * dx + dy * dy < 4) return; // min 2px gap for cleaner curves
-  curStroke.pts.push(pt);
-  redrawAll();
+
+  // Collect all coalesced events (iOS delivers many sub-frame points)
+  const events = e.getCoalescedEvents ? e.getCoalescedEvents() : [e];
+  events.forEach(ev => {
+    const raw = canvasPos(ev);
+
+    // 1. EMA pre-smooth: blend raw input towards running average
+    _emaPt.x = _emaPt.x * (1 - EMA_ALPHA) + raw.x * EMA_ALPHA;
+    _emaPt.y = _emaPt.y * (1 - EMA_ALPHA) + raw.y * EMA_ALPHA;
+
+    // 2. Lazy brush: move brush tip towards smoothed cursor by (1-LAZY_FACTOR)
+    const followX = (_emaPt.x - _lazyPt.x) * (1 - LAZY_FACTOR);
+    const followY = (_emaPt.y - _lazyPt.y) * (1 - LAZY_FACTOR);
+    _lazyPt.x += followX;
+    _lazyPt.y += followY;
+
+    // 3. Only record if moved enough (avoids point spam on slow strokes)
+    const pts = curStroke.pts;
+    const last = pts[pts.length - 1];
+    const dx = _lazyPt.x - last.x;
+    const dy = _lazyPt.y - last.y;
+    if (dx * dx + dy * dy > 0.5) {
+      pts.push({ x: _lazyPt.x, y: _lazyPt.y });
+    }
+  });
+
+  // Render: baked + live stroke (no full redraw)
+  const dpr = window.devicePixelRatio || 1;
+  ctx.clearRect(0, 0, canvas.width / dpr, canvas.height / dpr);
+  if (bakedCanvas) ctx.drawImage(bakedCanvas, 0, 0, canvas.width / dpr, canvas.height / dpr);
   drawStroke(curStroke);
 }
 
 function onUp(e) {
   if (!painting) return;
   painting = false;
+
+  // Flush: move lazy brush all the way to final finger position
+  if (curStroke && _emaPt && _lazyPt) {
+    const pts = curStroke.pts;
+    // Ease remaining distance in small steps
+    for (let i = 0; i < 12; i++) {
+      _lazyPt.x += (_emaPt.x - _lazyPt.x) * 0.45;
+      _lazyPt.y += (_emaPt.y - _lazyPt.y) * 0.45;
+      const last = pts[pts.length - 1];
+      if (Math.abs(_lazyPt.x - last.x) > 0.3 || Math.abs(_lazyPt.y - last.y) > 0.3) {
+        pts.push({ x: _lazyPt.x, y: _lazyPt.y });
+      }
+    }
+  }
+
   if (curStroke && curStroke.pts.length >= 1) {
     strokes.push(curStroke);
-    saveDrawing(false); // save strokes data only, don't sync img yet
+    saveDrawing(false);
   }
   curStroke = null;
+  _rawPts   = [];
+  _emaPt    = null;
+  _lazyPt   = null;
+
+  // Bake new stroke
+  ensureBaked();
+  const dpr = window.devicePixelRatio || 1;
+  bakedCtx.clearRect(0, 0, bakedCanvas.width / dpr, bakedCanvas.height / dpr);
+  strokes.forEach(s => drawStrokeOnCtx(bakedCtx, s));
+}
+
+// ── Chaikin's corner-cutting algorithm (3 passes for final render) ──
+function chaikinSmooth(pts, iterations) {
+  if (pts.length < 3) return pts;
+  let p = pts;
+  for (let iter = 0; iter < iterations; iter++) {
+    const out = [p[0]];
+    for (let i = 0; i < p.length - 1; i++) {
+      const p0 = p[i], p1 = p[i + 1];
+      out.push({ x: p0.x * 0.75 + p1.x * 0.25, y: p0.y * 0.75 + p1.y * 0.25 });
+      out.push({ x: p0.x * 0.25 + p1.x * 0.75, y: p0.y * 0.25 + p1.y * 0.75 });
+    }
+    out.push(p[p.length - 1]);
+    p = out;
+  }
+  return p;
 }
 
 canvasWrap.addEventListener('pointerdown', onDown);
@@ -7918,6 +8891,46 @@ reader.readAsDataURL(file);
 e.target.value = '';
 });
 
+// ── Crop canvas to actual drawn pixels (tight bounding box + padding) ────────
+function cropCanvasToContent(srcCanvas, pad) {
+  pad = pad || 12;
+  const w = srcCanvas.width, h = srcCanvas.height;
+  const ctx2 = srcCanvas.getContext('2d');
+  let data;
+  try { data = ctx2.getImageData(0, 0, w, h).data; } catch(e) { return null; }
+
+  let minX = w, minY = h, maxX = 0, maxY = 0;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const a = data[(y * w + x) * 4 + 3];
+      if (a > 8) { // ignore near-transparent pixels
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+      }
+    }
+  }
+
+  // Nothing drawn / fully transparent
+  if (maxX < minX || maxY < minY) return null;
+
+  // Add padding, clamp to canvas bounds
+  minX = Math.max(0, minX - pad);
+  minY = Math.max(0, minY - pad);
+  maxX = Math.min(w - 1, maxX + pad);
+  maxY = Math.min(h - 1, maxY + pad);
+
+  const cw = maxX - minX + 1;
+  const ch = maxY - minY + 1;
+
+  const tmp = document.createElement('canvas');
+  tmp.width  = cw;
+  tmp.height = ch;
+  tmp.getContext('2d').drawImage(srcCanvas, minX, minY, cw, ch, 0, 0, cw, ch);
+  return { dataUrl: tmp.toDataURL('image/png'), w: cw, h: ch };
+}
+
 function insertImageInEditor(src, naturalW, naturalH, isDrawing) {
 const bodyWrap = document.getElementById('editor-body-wrap');
 const wrap = document.createElement('div');
@@ -8280,10 +9293,64 @@ setTimeout(() => editorContent.focus(), 10);
 window.openNoteEditor = openEditor;
 })();
 
+// ── WKWebView: detect low-RAM device and disable expensive backdrop-filter ──
+(function detectLowEndDevice() {
+  // Определяем low-end только по hardwareConcurrency (≤2 ядра = A9 и старше)
+  // НЕ используем размер экрана — большинство iPhone имеют ширину 375-390px
+  const isLowEnd = (
+    typeof navigator.hardwareConcurrency !== 'undefined' &&
+    navigator.hardwareConcurrency <= 2
+  );
+  if (isLowEnd) {
+    document.body.classList.add('low-end-device');
+    document.body.dataset.lowEndForced = '1';
+  }
+  // Помечаем WKWebView для специфичных фиксов (НЕ отключает backdrop-filter)
+  if (window.webkit || navigator.userAgent.includes('Mobile/')) {
+    document.documentElement.classList.add('is-wkwebview');
+  }
+})();
+
+// ── INTERSECTION OBSERVER: auto-disable backdrop-filter on off-screen notes ──
+// Each note with backdrop-filter creates a GPU compositing layer.
+// Disabling it when scrolled off-screen frees significant VRAM.
+(function setupNoteObserver() {
+  if (!window.IntersectionObserver) return;
+  const obsOpts = { root: wrap, rootMargin: '150px', threshold: 0 };
+  const obs = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      const el = entry.target;
+      if (entry.isIntersecting) {
+        el.classList.remove('offscreen');
+      } else {
+        el.classList.add('offscreen');
+      }
+    });
+  }, obsOpts);
+  // Observe notes added to canvas
+  const canvasEl = document.getElementById('canvas');
+  const mutObs = new MutationObserver(muts => {
+    muts.forEach(m => {
+      m.addedNodes.forEach(node => {
+        if (node.classList && (node.classList.contains('note') || node.classList.contains('comment-bubble'))) {
+          obs.observe(node);
+        }
+      });
+      m.removedNodes.forEach(node => {
+        if (node.classList && (node.classList.contains('note') || node.classList.contains('comment-bubble'))) {
+          obs.unobserve(node);
+        }
+      });
+    });
+  });
+  mutObs.observe(canvasEl, { childList: true });
+})();
+
 init();
 
 applyLockState();
 loadSpawn();
+applyBgColor(loadBgColor()); // re-apply after notes rendered so tag styles are correct
 takeSnapshot(); // initial state
 
 // Hide splash after short delay (let app render first)
